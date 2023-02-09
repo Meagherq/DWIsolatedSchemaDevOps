@@ -1,0 +1,71 @@
+variables:
+  vmImageName: 'windows-2019'
+
+resources:
+  repositories:
+  - repository: QRMSalesSchemaSqlDb
+    type: git
+    trigger:
+      - main
+      - release/*
+    name: QRM DevOps/QRMSalesSchemaSqlDb
+
+  - repository: Pipelines
+    type: git
+    trigger: none
+    name: QRM DevOps/PipelineTemplates
+
+pool:
+  vmImage: $(vmImageName)
+
+stages:
+  - stage: build
+    displayName: Build Artifact
+    jobs:
+    - job: Build
+      displayName:  Build
+      steps:
+      - template: yaml/data-warehouse/azure-pipelines-ci.yaml@Pipelines
+        parameters:
+          checkout: 'QRMSalesSchemaSqlDb'
+  - stage: dev
+    displayName: Dev Deploy
+    jobs:
+    - job: Deploy
+      displayName:  Dev
+      condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    - deployment: NoneDeploy
+      displayName: Deploy to Dev
+      environment: 
+        name: development
+      strategy:
+        runOnce:
+          deploy:
+            steps: 
+            - template: yaml/data-warehouse/azure-pipelines-cd.yaml@Pipelines
+              parameters:
+                serverName: 'qrmsqlserver'
+                databaseName: 'qrm-schema-dev-sqldb'
+                solutionName: 'QRMSalesSchemaSqlDb'
+                environment: 'dev'
+
+  - stage: test
+    displayName: Test Deploy
+    jobs:
+    - job: Deploy
+      displayName:  test
+      condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/heads/release/'))
+    - deployment: NoneDeploy
+      displayName: Deploy to Test
+      environment: 
+        name: test
+      strategy:
+        runOnce:
+          deploy:
+            steps: 
+            - template: yaml/data-warehouse/azure-pipelines-cd.yaml@Pipelines
+              parameters:
+                serverName: 'qrmsqlserver'
+                databaseName: 'qrm-schema-test-sqldb'
+                solutionName: 'QRMSalesSchemaSqlDb'
+                environment: 'dev'
